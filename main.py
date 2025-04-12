@@ -5,6 +5,7 @@ from simulate import simulate
 from train import online_train
 
 if __name__ == "__main__":
+    print("Script started")
     """
     Initialization
     """
@@ -19,6 +20,7 @@ if __name__ == "__main__":
     data_path = "Simulation/OnlineData/"
 
     trainer = Process(target=online_train, args=(model_path, data_path))
+    print("Starting simulator process")
     simulator = Process(target=simulate, args=(sim_duration, desired_speed, length, model_path, data_path))
 
     trainer.start()

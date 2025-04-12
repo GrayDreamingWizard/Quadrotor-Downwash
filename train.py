@@ -1,5 +1,6 @@
 from torch.nn import functional as F
 from KNODE.models import *
+from KNODE.Utils.Solvers import RK as ode_solve
 import time
 import torch
 import os.path
@@ -32,14 +33,18 @@ def sample_and_grow(ode_train, traj_list, epochs, lr, lookahead, device, plot_fr
                 ode_input = torch.cat([z1[:, :13].unsqueeze(1), obs[k + 1, :, 13:].unsqueeze(1)], 2)
                 pred_traj.append(ode_input)
 
-            pred_traj = torch.transpose(torch.cat(pred_traj, 1), 0, 1)
+            pred_traj = torch.transpose(torch.cat(pred_traj, 1), 0, 1) #concatenated
 
-            l2_norm = sum(p.pow(2.0).sum()
-                          for p in ode_train.parameters())
+            #predicting mean and variance separately
+            pred_mean = pred_traj[:, :, 13] #first 13 entries from NNet
+            pred_var = pred_traj[:, :, 13:26] #next 13 entries from NNet
+
+            #Neg log likelihood loss
+            l2_norm = sum(p.pow(2.0).sum() for p in ode_train.parameters())
             if idx == 0:
-                loss = F.mse_loss(pred_traj[:, :, :13], obs[:, :, :13]) + l2_lambda * l2_norm
+                loss = nll_loss(pred_mean, pred_var, obs[:, :, :13]) + l2_lambda * l2_norm
             else:
-                loss += F.mse_loss(pred_traj[:, :, :13], obs[:, :, :13]) + l2_lambda * l2_norm
+                loss += nll_loss(pred_mean, pred_var, obs[:, :, :13]) + l2_lambda * l2_norm
 
         optimizer.zero_grad()
         loss.backward(retain_graph=True)
@@ -108,9 +113,28 @@ def online_train(model_path, data_path, verbose=True):
     data_cnt = 0
     device = "cpu"
     torch.manual_seed(0)
+
+    #cf params
+    """
+    Physical parameters of Crazyflie.
+    """
+    quad_params = {
+        'mass': 0.03,
+        'Ixx':  1.43e-5,
+        'Iyy':  1.43e-5,
+        'Izz':  2.89e-5,
+        'arm_length': 0.046,
+        'rotor_min': 0,
+        'rotor_max': 2500,
+        'k_t': 2.3e-08,
+        'k_d': 7.8e-11,
+    }
+
     # initializing the first model
-    ode_train = torch.load("KNODE/SavedModels/add_model_exp_weighting.pth", map_location=device)["ode_train"].to(device)
-    ode_train.func.nn_pool_size = 3  # the number of neural networks to keep
+    ode_func = QuadFullHybridUncertain(quad_params, nn_pool_size=3, device=device)
+    ode_train = NeuralODE(ode_func, ode_solve=ode_solve, STEP_SIZE=0.01).to(device)
+    # ode_train = torch.load("KNODE/SavedModels/add_model_exp_weighting.pth", map_location=device)["ode_train"].to(device)
+    # ode_train.func.nn_pool_size = 3  # the number of neural networks to keep
 
     while not os.path.exists(data_path + "online_end.npy"):  # the simulator creates a file end.npy to signal end of sim
 
@@ -133,3 +157,13 @@ def online_train(model_path, data_path, verbose=True):
         data_cnt = find_latest_data(data_path)
 
     if verbose: print(train_verbose_header + "Max Cascade Reached. EXIT")
+
+
+def nll_loss(pred_mean, pred_var, target):
+    #Neg log likelihood loss for unc calc
+    eps = 1e-6 #small epsilon variance
+    pred_var = pred_var + eps
+
+    #NLL calc
+    loss = 0.5*torch.log(pred_var) + 0.5*((target - pred_mean)**2)/pred_var
+    return torch.mean(loss)

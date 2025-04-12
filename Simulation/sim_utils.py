@@ -36,8 +36,8 @@ def sanitize_control_dic(control_dic):
 
 
 def sanitize_trajectory_dic(trajectory_dic):
-    trajectory_dic['x'] = np.asarray(trajectory_dic['x'], np.float).ravel()
-    trajectory_dic['x_dot'] = np.asarray(trajectory_dic['x_dot'], np.float).ravel()
+    trajectory_dic['x'] = np.asarray(trajectory_dic['x'], np.float64).ravel()
+    trajectory_dic['x_dot'] = np.asarray(trajectory_dic['x_dot'], np.float64).ravel()
 
     return trajectory_dic
 
