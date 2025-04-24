@@ -30,8 +30,8 @@ def merge_dicts(dicts_in):
 
 
 def sanitize_control_dic(control_dic):
-    control_dic['cmd_thrust'] = np.asarray(control_dic['cmd_thrust'], np.float).ravel()
-    control_dic['cmd_moment'] = np.asarray(control_dic['cmd_moment'], np.float).ravel()
+    control_dic['cmd_thrust'] = np.asarray(control_dic['cmd_thrust'], np.float64).ravel()
+    control_dic['cmd_moment'] = np.asarray(control_dic['cmd_moment'], np.float64).ravel()
     return control_dic
 
 

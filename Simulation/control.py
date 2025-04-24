@@ -28,6 +28,21 @@ class Control(object):
         self.x = np.zeros((1,))
         self.g = np.zeros((1,))
 
+        try:
+            x = MX.sym('x',13, 1)
+            u = MX.sym('u',4,1)
+            dynamics = x
+            try:
+                intg = integrator('intg', 'rk', {'x': x, 'p': u, 'ode': dynamics},
+                          dict(tf=0.05, simplify=True, number_of_finite_elements=4))
+            except Exception as e:
+                print(f"Trying alternative CasADi options: {str(e)}")
+                intg = integrator('intg', 'rk', {'x': x, 'p': u, 'ode': dynamics},
+                          dict(tf=0.05, simplify=True))
+            res = intg(x0 = x, p=u)
+            self.Dynamics = Function('F', [x, u], [res['xf']])
+        except Exception as e:
+            print(f"Warning: Failed to initialize dynamics: {str(e)}")
     def update(self, state, flat):
         opti = Opti()
         x = opti.variable(13, 21)
@@ -64,6 +79,7 @@ class Control(object):
 
     def update_model(self, node_path):
         if not os.path.exists(node_path):  # if the node model is not ready, skip updating
+            print(f"Warning: Model file not found: {node_path}")
             return 0
 
         x = MX.sym('x', 13, 1)
@@ -108,8 +124,13 @@ class Control(object):
                     ode_nn = vertcat(x, u)
 
         f = Function('f', [x, u], [hybrid_model])
-        intg = integrator('intg', 'rk', {'x': x, 'p': u, 'ode': f(x, u)},
-                          dict(tf=0.05, simplify=True, number_of_finite_elements=4))
+        try:
+            intg = integrator('intg', 'rk', {'x': x, 'p': u, 'ode': f(x, u)},
+                     dict(tf=0.05, simplify=True, number_of_finite_elements=4))
+        except Exception as e:
+            print(f"Trying alternative CasADi options: {str(e)}")
+            intg = integrator('intg', 'rk', {'x': x, 'p': u, 'ode': f(x, u)},
+                     dict(tf=0.05, simplify=True))
         res = intg(x0=x, p=u)
         self.Dynamics = Function('F', [x, u], [res['xf']])
         return 1
@@ -117,5 +138,7 @@ class Control(object):
 
 def instantiate_controller(path):
     controller = Control()
-    controller.update_model(path)
+    result = controller.update_model(path)
+    if result != 1:
+        print(f"Warning: failed to load model from {path}")
     return controller
